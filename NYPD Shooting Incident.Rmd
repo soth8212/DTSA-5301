@@ -1,0 +1,395 @@
+---
+title: "NYPD Shooting Final Mine"
+author: "Som Thapa"
+date: "2023-06-08"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r remove variables from the session, include=FALSE}
+rm(list = ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Import Libraries
+
+```{r library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(corrplot)
+library(gridExtra)
+```
+
+## Introduction
+
+### Objective
+
+Objective of this project is to 
+
+
+- find any particular age group,Sex and Race account highest number of Perpetrator and Victims
+- Find out if there any correlation between perpetrator and Victim Race 
+- Build Model to predict whether any of the demographics of the victims (age,sex or race)can be used to predict fatality of the   shooting.
+
+
+## Step 1: Import Data
+This data set is publicly available in NYPD website
+
+Source :-https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD
+
+### Import Dataset
+
+```{r import_data, message=FALSE, warnings=FALSE}
+url = 'https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD'
+nypd_shooting= read_csv(url)
+glimpse(nypd_shooting)
+```
+
+
+## Step 2: Tidy and Transform Data
+
+Looking at the variables  X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat, or LOCATION_DESC are not much of use for data analysis since we already have location details
+
+
+### Remove Unnecessary Columns
+
+
+```{r remove_columns}
+nypd_shooting <- nypd_shooting %>% 
+  select(-c(X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat ))
+```
+
+
+### Convert Data Types
+
+Covert Data types
+Convert occur_date to date object  and convert below categorical variables to factor
+- BORO
+- PERP_AGE_GROUP
+- PERP_SEX
+- PERP_RACE
+- VIC_AGE_GROUP
+- VIC_SEX
+- VIC_RACE
+- STATISTICAL_MURDER_FLAG
+Change data type:
+
+
+```{r}
+nypd_shooting = nypd_shooting %>%
+  replace_na(list(PERP_AGE_GROUP = "Unknown", PERP_SEX = "Unknown", PERP_RACE = "Unknown"))
+# Remove extreme values in data
+nypd_shooting = subset(nypd_shooting, PERP_AGE_GROUP!="1020" & PERP_AGE_GROUP!="224" & PERP_AGE_GROUP!="940")
+nypd_shooting$PERP_AGE_GROUP = recode(nypd_shooting$PERP_AGE_GROUP, UNKNOWN = "Unknown")
+nypd_shooting$PERP_SEX = recode(nypd_shooting$PERP_SEX, U = "Unknown")
+nypd_shooting$PERP_RACE = recode(nypd_shooting$PERP_RACE, UNKNOWN = "Unknown")
+nypd_shooting$VIC_SEX   = recode(nypd_shooting$VIC_SEX, U = "Unknown")
+nypd_shooting$VIC_RACE   = recode(nypd_shooting$VIC_RACE, UNKNOWN = "Unknown")
+nypd_shooting$INCIDENT_KEY = as.character(nypd_shooting$INCIDENT_KEY)
+nypd_shooting$BORO = as.factor(nypd_shooting$BORO)
+nypd_shooting$PERP_AGE_GROUP = as.factor(nypd_shooting$PERP_AGE_GROUP)
+nypd_shooting$PERP_SEX = as.factor(nypd_shooting$PERP_SEX)
+nypd_shooting$PERP_RACE = as.factor(nypd_shooting$PERP_RACE)
+nypd_shooting$VIC_AGE_GROUP = as.factor(nypd_shooting$VIC_AGE_GROUP)
+nypd_shooting$VIC_SEX = as.factor(nypd_shooting$VIC_SEX)
+nypd_shooting$VIC_RACE = as.factor(nypd_shooting$VIC_RACE)
+
+# Return summary statistics
+summary(nypd_shooting)
+```
+
+
+
+
+## Step 3:Visualizations 
+
+***Plot all variables to get high level sense of data***
+
+
+```{r baseplots}
+par(mfrow = c(2,2))
+for (i in 2:16){
+      barplot(table(nypd_shooting[i]), col = i, las = 2, main = colnames(nypd_shooting)[i])
+}
+
+par(mfrow = c(1,1))
+
+```
+
+
+***Observations***
+
+
+Looking at the above graphs, we can see different patterns.
+
+I am more interested diving deep into perpetrator and victims age group,Sex and Race and see if are any particular group are most impacted.
+
+
+**Relation of Gender & shooting incidents**
+
+```{r}
+Vic_race =nypd_shooting %>% 
+  ggplot(aes(VIC_SEX)) +
+  geom_bar(fill = "Red")+
+  theme_bw()+ 
+  ggtitle("Victim by Sex") +
+  ylab("Shooting Incident Count")+ 
+  theme(axis.text.x = element_text(angle = 90))
+perp_race = nypd_shooting %>% 
+  ggplot(aes(PERP_SEX)) +
+  geom_bar(fill = "Green")+
+  theme_bw()+ 
+  ggtitle("Perpetrator by Sex") +
+  ylab("Shooting Incident Count")+
+  theme(axis.text.x = element_text(angle = 90))
+grid.arrange(Vic_race, perp_race, newpage = TRUE, 
+             layout_matrix = matrix(1:2, byrow = TRUE, 2, 2))
+
+```
+
+
+**Observation & Discussion**
+
+
+We can see that me are much more likely to be involved in shooting incidents than women.
+
+
+**Victim Age Group & shooting incidents**
+
+
+```{r}
+Vic_race =nypd_shooting %>% 
+  ggplot(aes(VIC_AGE_GROUP)) +
+  geom_bar(fill = "Orange")+
+  theme_bw()+ 
+  ggtitle("Victim by Age Group") +
+  ylab("Shooting Incident Count")+ 
+  theme(axis.text.x = element_text(angle = 90))
+
+perp_race = nypd_shooting %>% 
+  ggplot(aes(PERP_AGE_GROUP)) +
+  geom_bar(fill = "Pink")+
+  theme_bw()+ 
+  ggtitle("Perpetrator by Age Group") +
+  ylab("Shooting Incident Count")+
+  theme(axis.text.x = element_text(angle = 90))
+
+grid.arrange(Vic_race, perp_race, newpage = TRUE, 
+             layout_matrix = matrix(1:2, byrow = TRUE, 2, 2))
+
+```
+
+
+**Observation & Discussion**
+
+
+We can see for the above graph the Age Group 18-24 and 25-44 accounts for the  victim and similar age group are contribute for the perpetrator, which aligns with my intuition that younger individuals tend to engage in more risky behavior
+
+One caveat on the perpetrator observation is there are significant of perpetrator whose  Age Group is unknown. Hence further data collection will be needed in order make any conclusion
+
+
+**Victim races relation to shooting incidents**
+
+
+
+```{r}
+Vic_race =nypd_shooting %>% 
+  ggplot(aes(VIC_RACE)) +
+  geom_bar(fill = "Purple")+
+  theme_bw()+ 
+  ggtitle("Shooting Victim by Race") +
+  ylab("Shooting Incident Count")+ 
+  theme(axis.text.x = element_text(angle = 90))
+
+perp_race = nypd_shooting %>% 
+  ggplot(aes(PERP_RACE)) +
+  geom_bar(fill = "Blue")+
+  theme_bw()+ 
+  ggtitle("Shooting Perpetrator Count by Race") +
+  ylab("Shooting Incident Count")+
+  theme(axis.text.x = element_text(angle = 90))
+
+
+grid.arrange(Vic_race, perp_race, newpage = TRUE, 
+             layout_matrix = matrix(1:2, byrow = TRUE, 2, 2))
+
+```
+
+
+**Observation & Discussion**
+
+
+
+We can observe that a disproportionately large count of shooting incident victims as well perpetrators are __Black__, followed by __White Hispanic and Black Hispanic__.
+
+I will go further on this observation and build a model to check if there is any correlation between Perpetrator and Victim Race especially black on black crime.
+
+
+### Fatal Shootings
+
+
+
+I now  want to check if the above (generic) trend follows for the fatal shooting
+
+
+
+**Victim age group & shooting incidents**
+
+```{r , echo=TRUE}
+nypd_shooting %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  ggplot(aes(x = VIC_AGE_GROUP)) +
+  geom_bar(fill = "Orange")+
+  theme_bw()+
+  labs(x = "Victim Age Group",
+       y = "Fatal Shooting Incidents",
+       title = "Fatal Shooting Incidents by Victim Age Group")
+```
+
+
+
+**Observation & Discussion**
+We can see quite clearly from the bar graph above, 18-24, 25-44 dominate the proportion of fatal victims as we have seen on overall victims above
+
+
+**Fatal Victim sex & shooting incidents**
+
+
+
+```{r , echo=TRUE}
+nypd_shooting %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  ggplot(aes(x = fct_infreq(VIC_SEX))) + # Display by frequency.
+  geom_bar(stat = 'count')+
+  geom_bar(fill = "Purple")+
+  theme_bw()+
+  labs(x = "Victim Sex",
+       y = "Fatal Shooting Incidents",
+       title = "Fatal Shooting Incidents by Victim Sex")
+```
+\
+
+**Observation & Discussion**
+
+
+
+Again majority of fatal victims are male as expected
+
+
+
+**Fatal Victim race & shooting incidents**
+
+
+
+
+```{r , echo=TRUE}
+nypd_shooting %>%
+  filter(STATISTICAL_MURDER_FLAG == TRUE) %>%
+  ggplot(aes(x = fct_infreq(VIC_RACE))) + # Display by frequency.
+  geom_bar(stat = 'count')+
+  geom_bar(fill = "Red")+
+  theme_bw()+
+  labs(x = "Victim Race",
+       y = "Fatal Shooting Incidents",
+       title = "Fatal Shooting Incidents by Victim Race")
+
+```
+
+
+**Observation & Discussion**
+
+
+We again see the similar tred as highest number of fatal victims are black and white Hispanic
+
+
+
+## Statistical Analysis
+
+
+
+#### Chi-Square Test and Logistic Regression Model
+
+
+
+As I have mentioned above, I wanted to see if there is correlation between perpetrator's race and victim's race
+
+```{r chisq}
+chisq.test(nypd_shooting$VIC_RACE, nypd_shooting$PERP_RACE, simulate.p.value=TRUE)
+```
+
+**Observation & Discussion**
+
+
+The p value from Chi-Square Test is significant (0.0004998) compared to standard alpha = 0.05, suggesting that there is a relationship between victim's race and perpetrator's race.
+
+I would like to do further analysis to see which races have strong correlation 
+```{r cont table}
+
+table = as.matrix(table(nypd_shooting$VIC_RACE, nypd_shooting$PERP_RACE))
+
+
+corrplot::corrplot(table, is.corr=FALSE, method="color", addCoef.col="grey50",
+                   addgrid.col = 'black',tl.col = "black", cl.pos = "n")
+```
+
+From above contingency table, we observed that most shooting incidents involved Black on black (ie black victim with Black perpetrator).Incidents involving Black victim and White Hispanic perpetrator is pretty high. Number is also high for unknown perpetrator and black victim is fairly high as well. Again, we have pretty high number for unknown perpetrator; we need to be cautious on drawing any concrete conclusion until have more accurate data.
+
+
+### Multivariable Logistic Regression Model
+
+
+
+My objective is to determine whether any of the demographics of the victim (age, sex, or race) can be used to predict if a shooting is fatal.
+
+
+```{r victim model}
+glm_model <- glm(STATISTICAL_MURDER_FLAG ~ VIC_AGE_GROUP + VIC_SEX + VIC_RACE, data = nypd_shooting, family = 'binomial')
+summary(glm_model)
+```
+
+**Observation & Discussion**
+
+
+
+the coefficient for victim age group 45-65 and 65+ is positive and significant.Hence Age group seems to be a determining factor in whether the victim is likely to survive a shooting.. However, __Sex__ and __Race__ does not seems to have significant impact on the fatality of shooting 
+
+
+## Step 4: Report Conclusion and Sources of Bias
+
+
+
+
+### Conclusion
+
+
+
+The logistic model summary shows that victims ages 65 +  are more likely are most prone to fatality of shooting incidents and the probability decreases as age of the victim decreases
+
+We can also safely summarize' shootings incidents tend to happen most frequently to  Black-Male, White Hispanic-Male, and Black Hispanic-Male . Most of the perpetrator are from age group  18-24 and 25-44.
+
+We also have observed there strong correlation between shooting incidents and fatality for race from chi squared test . Black-Male, White Hispanic-Male, and Black Hispanic-Male consistently had the highest number of incidents where they were the victims of shooting incidents, 
+
+
+
+### Sources of Bias
+
+
+There are lots variable with null and unknown values. Further data collection and analysis is needed before making any concrete conclusion.
+
+The given data set are highly specific in one area of New York which is Brooklyn and the victim are mainly Black. We could have potential bias to conclude black on black shooting incidents without looking similar area with majority of other races.
+
+
+Moreover, there may be other confounding factors such as socio-economic status could play a critical role.
+
+
+
+
+```{r}
+S1 <- sessionInfo()
+S1
+```
